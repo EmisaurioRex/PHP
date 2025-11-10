@@ -1,9 +1,9 @@
 <?php
-// Recibir el tipo de mensaje y el texto a través de GET
+
 $tipo = isset($_GET['tipo']) ? $_GET['tipo'] : 'error';
 $mensaje = isset($_GET['msg']) ? $_GET['msg'] : 'No se recibió ningún mensaje de estado.';
 
-// Definir el estilo y el encabezado basado en el tipo
+
 if ($tipo === 'exito') {
     $titulo = "¡Operación Exitosa!";
     $color = "green"; 
@@ -64,4 +64,5 @@ if ($tipo === 'exito') {
     </div>
 
 </body>
+
 </html>
