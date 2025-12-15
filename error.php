@@ -2,7 +2,7 @@
 session_start();
 
 if (!isset($_SESSION['login_error'])) {
-    header('Location: sesion.php');
+    header('Location: login.php');
     exit;
 }
 
@@ -42,6 +42,6 @@ unset($_SESSION['login_error']);
 <body>
     <h1>¡Error de Ingreso!</h1>
     <p class="error"> <?php echo ($error_mensaje); ?> </p>
-    <a href="sesion.php">Regresar e intentar de nuevo</a>
+    <a href="login.php">Regresar e intentar de nuevo</a>
 </body>
 </html>

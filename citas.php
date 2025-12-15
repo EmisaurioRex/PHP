@@ -1,9 +1,9 @@
 <?php
+
 session_start();
 
-require_once 'conexion.php'; 
-
 $login_page = 'login.php'; 
+$dashboard_page = 'inicio.php'; 
 
 if (!isset($_SESSION['usuario'])) {
     if (isset($_COOKIE['recuerdame']) && !empty($_COOKIE['recuerdame'])) {
@@ -24,50 +24,45 @@ if (!empty($_POST) && isset($_POST['cerrar'])) {
 
 $usuario_actual = htmlspecialchars($_SESSION['usuario'] ?? 'Admin'); 
 $rol_actual = 'Administrador'; 
+$pagina_activa = 'citas'; 
+
+require_once 'conexion.php'; 
 
 
-$query_citas_hoy = "
-    SELECT COUNT(id_cita) FROM citas
-    WHERE DATE(fecha_hora) = CURDATE()
-";
-$citas_hoy = seleccionar($query_citas_hoy);
-$num_citas_hoy = $citas_hoy[0][0] ?? 0;
-
-
-
-$query_pacientes_activos = "
-    SELECT COUNT(DISTINCT t.id_paciente) FROM tratamientos t
-    WHERE t.fecha_fin_estimada IS NULL OR t.fecha_fin_estimada > CURDATE()
-";
-$pacientes_activos_res = seleccionar($query_pacientes_activos);
-$num_pacientes_activos = $pacientes_activos_res[0][0] ?? 0;
-
-
-
-$query_proximas_citas = "
+$query_citas = "
     SELECT 
-        c.fecha_hora, p.nombre AS nombre_paciente, 
-        p.especie, c.motivo
+        c.id_cita, c.fecha_hora, c.motivo, c.estado,
+        p.nombre AS nombre_paciente, p.especie,
+        cl.nombre AS nombre_cliente, cl.apellido AS apellido_cliente
     FROM citas c
     JOIN pacientes p ON c.id_paciente = p.id_paciente
-    WHERE DATE(c.fecha_hora) >= DATE_ADD(CURDATE(), INTERVAL 1 DAY) 
-      AND DATE(c.fecha_hora) <= DATE_ADD(CURDATE(), INTERVAL 5 DAY)
-    ORDER BY c.fecha_hora ASC
-    LIMIT 5
+    JOIN clientes cl ON p.id_cliente = cl.id_cliente
+    ORDER BY c.fecha_hora DESC
 ";
-$proximas_citas = seleccionar($query_proximas_citas);
 
+$citas = seleccionar($query_citas);
 
-$query_pacientes_recientes = "
-    SELECT 
-        p.nombre, p.especie, c.nombre AS nombre_cliente
-    FROM pacientes p
-    LEFT JOIN clientes c ON p.id_cliente = c.id_cliente
-    ORDER BY p.id_paciente DESC
-    LIMIT 5
-";
-$pacientes_recientes = seleccionar($query_pacientes_recientes);
+if ($citas === false) {
+    $citas = [];
+}
 
+$mensaje_feedback = '';
+if (isset($_GET['msg'])) {
+    switch ($_GET['msg']) {
+        case 'create_ok':
+            $mensaje_feedback = '<p class="success-feedback">✅ Cita creada exitosamente.</p>';
+            break;
+        case 'update_ok':
+            $mensaje_feedback = '<p class="success-feedback">✏️ Cita actualizada exitosamente.</p>';
+            break;
+        case 'delete_ok':
+            $mensaje_feedback = '<p class="success-feedback">🗑️ Cita eliminada correctamente.</p>';
+            break;
+        case 'error':
+            $mensaje_feedback = '<p class="error-feedback">❌ Ha ocurrido un error al procesar la solicitud.</p>';
+            break;
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -75,7 +70,7 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inicio | VetAdmin</title>
+    <title>Gestión de Citas | VetAdmin</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
     
@@ -140,7 +135,7 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             background-color: #2d4373;
             color: var(--white);
         }
-
+        
         .nav-link.active {
             background-color: var(--white); 
             color: var(--primary-color); 
@@ -235,7 +230,13 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             color: #cc0000;
         }
 
-        .dashboard-content {
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .page-content {
             padding: 30px;
             flex-grow: 1;
         }
@@ -247,60 +248,26 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             font-weight: 600;
         }
 
-        .summary-cards {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 30px;
+        /* Feedback Messages */
+        .success-feedback, .error-feedback {
+            padding: 10px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .success-feedback {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error-feedback {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
 
-        .card {
-            background-color: var(--white);
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: var(--shadow-light);
-            flex: 1; 
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: transform 0.3s;
-        }
 
-        .card-info {
-            flex-grow: 1; 
-        }
-
-        .card-number {
-            font-size: 36px;
-            font-weight: 700;
-            color: var(--text-dark);
-        }
-
-        .card-title {
-            font-size: 14px;
-            color: var(--text-medium);
-            margin-bottom: 5px;
-        }
-
-        .card-icon {
-            font-size: 24px;
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .citas-card .card-icon { background-color: rgba(66, 133, 244, 0.1); color: var(--info-color); } 
-        .pacientes-card .card-icon { background-color: rgba(15, 157, 88, 0.1); color: var(--success-color); } 
-
-        .data-sections {
-            display: flex;
-            gap: 20px;
-        }
-
-        .data-panel {
-            flex: 1;
+        .appointments-panel {
             background-color: var(--white);
             border-radius: 10px;
             box-shadow: var(--shadow-light);
@@ -312,8 +279,8 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
-            padding-bottom: 15px;
             border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 15px;
         }
 
         .data-header h3 {
@@ -347,82 +314,88 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             color: var(--text-medium);
             font-style: italic;
             padding: 30px 0;
-            border-top: 1px solid #f0f0f0;
         }
-
-        .data-list {
+        
+        .appointment-list {
             list-style: none;
             padding: 0;
             margin: 0;
         }
-
-        .data-list li {
+        
+        .list-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #f9f9f9;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
         }
-
-        .data-list li:last-child {
-            border-bottom: none;
-        }
-
-        .list-item-info strong {
-            display: block;
-            color: var(--text-dark);
-            font-weight: 600;
-        }
-
-        .list-item-info small {
-            color: var(--text-medium);
-            font-size: 13px;
-        }
-
-        .list-item-badge {
-            font-size: 12px;
-            padding: 4px 8px;
+        
+        .action-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 5px;
             border-radius: 4px;
-            font-weight: 500;
+            transition: background-color 0.2s, color 0.2s;
+            text-decoration: none; /* Es un enlace */
+        }
+
+        .edit-button {
+            color: var(--info-color); /* Azul */
+        }
+
+        .edit-button:hover {
+            background-color: rgba(66, 133, 244, 0.1);
+        }
+
+        .delete-button {
+            color: #cc0000; /* Rojo */
+        }
+
+        .delete-button:hover {
+            background-color: rgba(204, 0, 0, 0.1);
+        }
+
+
+        .status-tag {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--white);
+            text-align: center;
             text-transform: uppercase;
         }
 
-        .badge-date {
-            background-color: var(--light-bg);
-            color: var(--text-dark);
-        }
-        .badge-time {
-            background-color: rgba(251, 188, 5, 0.2); 
-            color: #8c6a01; 
-        }
-        .badge-new {
-             background-color: rgba(15, 157, 88, 0.2); 
-             color: var(--success-color);
-        }
+        .status-confirmada { background-color: var(--success-color); } 
+        .status-pendiente { background-color: var(--warning-color); } 
+        .status-cancelada { background-color: #cc0000; } 
+
     </style>
 </head>
 <body>
     
-    <div class="sidebar" style="background-color: var(--primary-color);">
+    <div class="sidebar">
         <div class="vet-admin-title">VetAdmin</div>
         
         <nav class="sidebar-nav">
-            <a href="inicio.php" class="nav-link active">
+            <a href="<?php echo $dashboard_page; ?>" class="nav-link <?php echo ($pagina_activa == 'dashboard' ? 'active' : ''); ?>">
                 <i class="fas fa-chart-line"></i> Inicio
             </a>
-            <a href="citas.php" class="nav-link">
+            <a href="citas.php" class="nav-link <?php echo ($pagina_activa == 'citas' ? 'active' : ''); ?>">
                 <i class="fas fa-calendar-alt"></i> Citas
             </a>
-            <a href="clientes.php" class="nav-link">
+            <a href="clientes.php" class="nav-link <?php echo ($pagina_activa == 'clientes' ? 'active' : ''); ?>">
                 <i class="fas fa-user-friends"></i> Clientes
             </a>
-            <a href="pacientes.php" class="nav-link">
+            <a href="pacientes.php" class="nav-link <?php echo ($pagina_activa == 'pacientes' ? 'active' : ''); ?>">
                 <i class="fas fa-paw"></i> Pacientes
             </a>
-            <a href="tratamientos.php" class="nav-link">
+            <a href="tratamientos.php" class="nav-link <?php echo ($pagina_activa == 'tratamientos' ? 'active' : ''); ?>">
                 <i class="fas fa-syringe"></i> Tratamientos
             </a>
-            </nav>
+        </nav>
     </div>
 
     <div class="main-content">
@@ -450,86 +423,54 @@ $pacientes_recientes = seleccionar($query_pacientes_recientes);
             </div>
         </header>
 
-        <main class="dashboard-content">
-            <h2 class="page-title">Panel de Control</h2>
+        <main class="page-content">
+            <h2 class="page-title">Gestión de Citas</h2>
 
-            <section class="summary-cards">
-                
-                <div class="card citas-card">
-                    <div class="card-info">
-                        <div class="card-title">Citas Hoy</div>
-                        <div class="card-number"><?php echo $num_citas_hoy; ?></div> 
-                    </div>
-                    <div class="card-icon"><i class="fas fa-calendar-check"></i></div>
+            <?php echo $mensaje_feedback;  ?>
+
+            <div class="appointments-panel">
+                <div class="data-header">
+                    <h3>Citas Programadas</h3>
+                    <a href="citas_crud.php" class="new-button"><i class="fas fa-plus"></i> Nueva Cita</a>
                 </div>
-
-                <div class="card pacientes-card">
-                    <div class="card-info">
-                        <div class="card-title">Pacientes Activos</div>
-                        <div class="card-number"><?php echo $num_pacientes_activos; ?></div>
-                    </div>
-                    <div class="card-icon"><i class="fas fa-paw"></i></div>
-                </div>
-
-                </section>
-            
-            <section class="data-sections">
                 
-                <div class="data-panel">
-                    <div class="data-header">
-                        <h3>Próximas Citas (Próx. 5 días)</h3>
-                        <a href="citas.php" class="new-button"><i class="fas fa-plus"></i> Nueva Cita</a>
-                    </div>
-                    
-                    <?php if (empty($proximas_citas)): ?>
-                        <p class="empty-message">No hay citas programadas en los próximos 5 días.</p>
-                    <?php else: ?>
-                        <ul class="data-list">
-                            <?php foreach ($proximas_citas as $cita): 
-                                $timestamp = strtotime($cita[0]);
-                                $fecha_formateada = date('d/m/Y', $timestamp);
-                                $hora_formateada = date('H:i', $timestamp);
-                            ?>
-                            <li>
-                                <div class="list-item-info">
-                                    <strong><?php echo htmlspecialchars($cita[1]); ?> (<?php echo htmlspecialchars($cita[2]); ?>)</strong>
-                                    <small>Motivo: <?php echo htmlspecialchars($cita[3]); ?></small>
-                                </div>
+                <?php if (empty($citas)): ?>
+                    <p class="empty-message">No hay citas programadas para mostrar.</p>
+                <?php else: ?>
+                    <ul class="appointment-list">
+                        <?php foreach ($citas as $cita): 
+                           
+                            $cita_id_for_crud = $cita[0];
+                        ?>
+                            <li class="list-item">
                                 <div>
-                                    <span class="list-item-badge badge-date"><?php echo $fecha_formateada; ?></span>
-                                    <span class="list-item-badge badge-time"><?php echo $hora_formateada; ?></span>
+                                    <strong><?php echo date('d/m/Y H:i', strtotime($cita[1])); ?></strong>
+                                    <br>
+                                    Paciente: <?php echo htmlspecialchars($cita[4]); ?> (<?php echo htmlspecialchars($cita[5]); ?>) | Dueño: <?php echo htmlspecialchars($cita[6] . ' ' . $cita[7]); ?>
+                                    <small> | Motivo: <?php echo htmlspecialchars($cita[2]); ?></small>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span class="status-tag status-<?php echo strtolower($cita[3]); ?>">
+                                        <?php echo htmlspecialchars($cita[3]); ?>
+                                    </span>
+                                    
+                                    <a href="citas_crud.php?action=editar&id=<?php echo $cita_id_for_crud; ?>" class="action-button edit-button" title="Editar Cita"><i class="fas fa-edit"></i></a>
+                                    <a 
+                                        href="citas_crud.php?action=eliminar&id=<?php echo $cita_id_for_crud; ?>" 
+                                        class="action-button delete-button" 
+                                        title="Eliminar Cita" 
+                                        onclick="return confirm('¿Está seguro de que desea eliminar esta cita? Esta acción es irreversible.');"
+                                    >
+                                        <i class="fas fa-trash-alt"></i>
+                                    </a>
                                 </div>
                             </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php endif; ?>
-                </div>
-
-                <div class="data-panel">
-                    <div class="data-header">
-                        <h3>Pacientes Recientes</h3>
-                        <a href="pacientes.php" class="new-button"><i class="fas fa-plus"></i> Nuevo Paciente</a>
-                    </div>
-                    
-                    <?php if (empty($pacientes_recientes)): ?>
-                        <p class="empty-message">No se han agregado pacientes recientemente.</p>
-                    <?php else: ?>
-                        <ul class="data-list">
-                            <?php foreach ($pacientes_recientes as $paciente): 
-                            ?>
-                            <li>
-                                <div class="list-item-info">
-                                    <strong><?php echo htmlspecialchars($paciente[0]); ?> (<?php echo htmlspecialchars($paciente[1]); ?>)</strong>
-                                    <small>Dueño: <?php echo htmlspecialchars($paciente[2]); ?></small>
-                                </div>
-                                <span class="list-item-badge badge-new">ID: <?php echo $paciente[0]; ?></span> 
-                            </li>
-                            <?php endforeach; ?>
-                        </ul>
-                    <?php endif; ?>
-                </div>
-
-            </section>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+                
+            </div>
         </main>
     </div>
 </body>
